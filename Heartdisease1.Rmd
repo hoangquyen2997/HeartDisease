@@ -1,0 +1,664 @@
+---
+title: "Heart Disease -EDA- Hyperparameter"
+author: "Quyen Hoang"
+date: "5/3/2022"
+output:
+  word_document: default
+  html_document: default
+  pdf_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+## Loading libraries
+```{r }
+library(readr)
+library(ggplot2)
+library(dplyr)
+library(tidyr)
+library(purrr)
+library(corrplot)
+library(reshape)
+library(skimr)
+library(gridExtra)
+library(hrbrthemes)
+library(caret)
+library(ROSE)
+library(tidymodels)
+library(xgboost)
+library(readxl)
+library(tidyverse)
+library(fastDummies)
+library(data.table)
+library(rpart.plot)
+```
+
+## Loading data
+
+```{r }
+library(readr)
+heartdata<- read_csv("heart_2020_cleaned.csv")
+```
+
+## Data Epxloratory
+```{r}
+##Data Overview
+summary(heartdata)
+#Dimmension
+dim(heartdata)
+#Data types. 
+str(heartdata)
+#list numeric columns
+numColumns <- colnames(dplyr::select_if(heartdata, is.numeric))
+numColumns
+#list categorical columns
+charColumns <- colnames(dplyr::select_if(heartdata, is.character))
+charColumns
+
+```
+
+The data set has 18 variables and 319795 observations.  
+There are 4 numeric columns and 14 categorical columns. 
+
+```{r}
+#First 10 rows of dataset (only 7 out of 18 columns)
+head(heartdata)
+```
+
+```{r}
+#Check for NUll values
+colnames(heartdata)[colSums(is.na(heartdata)) > 0]
+```
+There is no NA values within it. 
+
+
+## Data Visualization
+### Overall Distribution of All Variables. 
+```{r}
+
+#Histogram for numeric data
+heartdata %>%
+  keep(is.numeric) %>% 
+  gather() %>% 
+  ggplot(aes(value)) +
+  facet_wrap(~ key, scales = "free") +
+  geom_histogram()
+
+#Boxplot for numeric variables
+heartdata %>%
+  keep(is.numeric) %>% 
+  gather() %>% 
+  ggplot(aes(value)) +
+  facet_wrap(~ key, scales = "free") +
+  geom_boxplot()
+
+
+```
+
+- Sleep time: The number of hours people sleep gathers mostly around 6-8 hours.
+-BMI: Body Mass Index is right-skewed with a min BMI o 12.02, the most popular BMI is 25, and the maximum is 94.85.
+-Physical and mental health: Their distributions are quite similar two each other. Their data distribute mostly around 0 (~70%), and the rest of them scatter from 1-30.
+
+```{r}
+#Barlot for categorical variables
+heartdata %>%
+  keep(is.character) %>% 
+  gather() %>% 
+  ggplot(aes(value)) +
+  facet_wrap(~ key, scales = "free") +
+  geom_bar()
+
+ggplot(heartdata, aes(x=HeartDisease, fill=HeartDisease))+geom_bar()
+```
+Interpretation: 
+-First, the number of people who have heart disease in this data set is 1/10 of the number of those who do not.
+-Second, it looks like the ratio of heart disease is in direct proportion to the ratio of Skin Cancer, Stroke, Diabetic, ASthma, AlcoholDrinking, and DiffWalking.
+-To see whether the people that have heart disease are also those who have these problems above I will run code to get the data of those who have heart disease only.
+### Compare the distribution of Variables in the general data set and the heartdisease_yes data set
+
+
+Distribution for categorical values
+
+```{r}
+#Barplot for categorical values. 
+heartdisease_yes<-heartdata %>% filter(HeartDisease=="Yes")
+heartdisease_yes %>%
+  keep(is.character) %>% 
+  gather() %>% 
+  ggplot(aes(value)) +
+  facet_wrap(~ key, scales = "free") +
+  geom_bar()
+```
+
+
+-From the result, it seems my assumption is not quite right. For the people who have Heart Disease, the number of those who drink Alcohol, have Asthma, Stroke, Skin Cancer, and Kidney Disease are still way lesser than people that do not. Only the percentage of diabetic people increases for those who have heart disease.
+
+Distribution for numeric values
+
+```{r}
+#Histogram - People who have heart disease
+heartdisease_yes %>%
+  keep(is.numeric) %>% 
+  gather() %>% 
+  ggplot(aes(value)) +
+  facet_wrap(~ key, scales = "free") +
+  geom_histogram()
+```
+
+
+```{r}
+#Boxplot for numeric variables - People who have heart disease. 
+heartdisease_yes %>%
+  keep(is.numeric) %>% 
+  gather() %>% 
+  ggplot(aes(value)) +
+  facet_wrap(~ key, scales = "free") +
+  geom_boxplot()
+```
+
+
+Comparison: For people who have heart disease, the range of physical health (from 0-15) is larger than the one of the general dataset (~0-3). Although the percentage of people who have physical health=0 is still large, the number of people that have physical health from 0-15 increases significantly. There are not many differences in the distribution of Sleep Time, BMI, and Mental Health of people who have and do not have heart disease.
+
+### Age Distribution
+```{r}
+#Distribution of Age by Heart Disease
+ggplot(data=heartdata, aes(fill=HeartDisease, x=AgeCategory))+geom_bar()+scale_fill_manual(values = c("Grey","LightBlue"))+theme(legend.position = "bottom", axis.text.x = element_text(angle = 90), plot.title = element_text(hjust=0.5))+ggtitle("Distribution of Age by HeartDisease")
+```
+
+Comparison: The number of people who have heart disease increases at an older age.
+
+### GenHealth Distribution
+```{r}
+#Distribution of General Health by Heart Disease
+ggplot(data=heartdata, aes(fill=HeartDisease, x=GenHealth))+geom_bar()+scale_fill_manual(values = c("Grey","Pink"))+ggtitle("Distribution of General Health by Heart Diease")+theme(plot.title=element_text(hjust=0.5))
+```
+
+Comparison: There is a difference in the general health of people that have heart disease compared to the general data set:  The general health of HeartDisease_Yes people are not as good as those in the general data set
+Arrange from the lowest to largest in quantity 
+- in the whole data set:              Poor, Fair, Excellent, Good, Very Good. 
+-in the HeartDisease_Yes data: Excellent, Poor, Fair, Very Good, Good. 
+
+### Sex Distribution
+```{r}
+#Barplot HeartDisease by Sex
+ggplot(data=heartdata, aes(fill=HeartDisease, x=Sex))+geom_bar()+ggtitle("Sex Distribution by Heart Disease")+theme(plot.title = element_text(hjust=0.5))
+table(heartdisease_yes$Sex)
+```
+Comparison.: There are more males having heart disease than females
+
+
+###General Health by Sex
+```{r}
+g1<-ggplot(data=heartdata, aes(color=Sex, x=GenHealth, fill=Sex))+geom_bar(position="dodge")+scale_fill_manual(values = c("pink","white"))+ggtitle("General Health Distribution by Sex", subtitle = " of general data")+theme(legend.position = "bottom", plot.subtitle = element_text(hjust=0.5))
+g2<-ggplot(data=heartdisease_yes, aes(color=Sex, x=GenHealth, fill=Sex))+geom_bar(position="dodge")+scale_fill_manual(values = c("pink","white"))+ggtitle("General Health Distribution by Sex", subtitle = " of HeartDisease_Yes")+theme(legend.position = "bottom", plot.subtitle = element_text(hjust=0.5))
+grid.arrange(g1,g2, ncol=2)
+```
+
+###Distribution of BMI by Sex 
+```{r}
+b1<-ggplot(data=heartdata, aes(color=Sex, x=BMI, fill=Sex))+geom_histogram(alpha=0.5, position="identity")+ggtitle("BMI Distribution by Sex", subtitle = "of General data")+theme(legend.position = "bottom")
+b2<-ggplot(data=heartdisease_yes, aes(color=Sex, x=BMI, fill=Sex))+geom_histogram(alpha=0.5, position="identity")+ggtitle("BMI Distribution by Sex", subtitle = " of HeartDisease_Yes")+theme(legend.position = "bottom")
+
+grid.arrange(b1,b2, nrow=2)
+```
+
+Comparison:
+Gender: There is a difference between the distributions of Males and Females. As we can see Males tend to fall into the overweight range (25>29.9), while females are kind of lean to the left which is normal weights (18.5-24.9) and underweight (<18.4). 
+Heart Disease: There is no difference between distributions of BMI of HeartDisease_Yes and the overall data set. The difference in the two plots caused by the number of males in the heartdisease_yes data set is larger than females compare to the whole data set.
+
+### Sleep time Distribution of Sex
+```{r}
+##Overall
+s1<-ggplot(data=heartdata, aes(color=Sex, x=SleepTime, fill=Sex))+geom_histogram(alpha=0.4, position="identity")+theme(legend.position = "none")+ggtitle("Sleeping Time Distribution by Sex", subtitle = "of general data")+theme(legend.position = "bottom")
+##for whom who have heart disease
+s2<-ggplot(data=heartdisease_yes, aes(color=Sex, x=SleepTime, fill=Sex))+geom_histogram(alpha=0.4, position="identity")+ggtitle("Sleeping Time Distribution by Sex", subtitle = "of HeartDisease_Yes")+theme(legend.position = "bottom")
+
+grid.arrange(s1,s2, nrow=2)
+```
+```{r}
+table(heartdata$SleepTime)
+```
+Comparison: 
+Gender: The amount of sleeping time for males and females is pretty equal. Both groups’ sleeping time gathers mostly around 7-8 hours per day. Female seems to sleep more than males represented by the sleeping time of female get peak at a higher time. 
+Heart Disease: Compare to the overall data, there is not much difference in the distribution in sleep time of Males and Females. The difference in the two plots is caused by the decrease in the number of females in the HeartDisease_Yes data set. 
+ 
+
+###Smoking Distribution by Sex
+```{r}
+sm1<-ggplot(data=heartdata, aes(color=Sex, x=Smoking, fill=Sex))+geom_bar()+scale_fill_manual(values = c("Orange","white"))+ggtitle("Smoking Distribution by Sex", subtitle = "of general data")+theme(legend.position = "bottom", plot.subtitle = element_text(hjust=0.5), plot.title = element_text(hjust = 0.5))
+sm2<-ggplot(data=heartdisease_yes, aes(color=Sex, x=Smoking, fill=Sex))+geom_bar()+scale_fill_manual(values = c("Orange","white"))+ggtitle("Smoking Distribution by Sex", subtitle = "HeartDisease_Yes")+theme(legend.position = "bottom", plot.subtitle = element_text(hjust=0.5), plot.title = element_text(hjust = 0.5))
+grid.arrange(sm1,sm2, ncol=2)
+```
+Comparison:
+Gender: Males and Females are equal in the number of Smoking. 
+Heart Disease: when it comes to those who got heart disease, Males are doing more Smoking than Females. 
+
+### Physical Activity Distribution by Sex
+```{r}
+p1<-ggplot(data=heartdata, aes(color=Sex, x=PhysicalActivity, fill=Sex))+geom_bar(position="dodge")+scale_fill_brewer(palette = "Set1")+ggtitle("Physical Activity by Sex", subtitle = "of general data")+theme(legend.position = "bottom", plot.subtitle = element_text(hjust=0.5), plot.title = element_text(hjust = 0.5))
+p2<-ggplot(data=heartdisease_yes, aes(color=Sex, x=PhysicalActivity, fill=Sex))+geom_bar(position="dodge")+scale_fill_brewer(palette = "Set1")+ggtitle("Physical Activity by Sex", subtitle = "of HeartDisease_Yes")+theme(legend.position = "bottom", plot.subtitle = element_text(hjust=0.5), plot.title = element_text(hjust = 0.5))
+grid.arrange(p1,p2, ncol=2)
+```
+Comparison:
+Gender: In the general data set, Males and females are quite equal in the number of doing Physical Activity.
+Heart Disease: When it comes to those who get heart disease, Males are doing more Physical Activity than Females.
+
+
+
+## Correlation matrix
+```{r}
+library(viridis)
+#Correlation matrix
+corrMatrix <- cor(subset(heartdata, select = numColumns))
+corrMatrix
+
+corrplot(corrMatrix)
+```
+
+
+Overall, there is no strong relationship between numeric variables, the highest correlation value is 0.29 which is between Mental and Physical health. 
+Sleep time seems to have low negative relationships with all the numeric variables. 
+
+```{r}
+#####
+heartdata$HeartDisease<- ifelse(heartdata$HeartDisease =="Yes", 1,0)
+heartdata$HeartDisease<-as.factor(heartdata$HeartDisease)
+```
+
+## Data Analysis
+1. Data splitting
+```{r}
+#Data Transformation - change character data to factor
+heartdata[charColumns]<-lapply(heartdata[charColumns], as.factor)
+#Data slitting
+set.seed(145)
+colnames(heartdata) <- make.names(colnames(heartdata))    ##helps fixing the error inn `[.data.frame`(m, labs) : undefined columns selected of the decision tree code 
+trainning.samples<-heartdata$HeartDisease %>% createDataPartition(p=0.7, list=FALSE)
+train<-heartdata[trainning.samples,]
+test<- heartdata[-trainning.samples,]
+ # Distritbution of Yes and No in Train and Test sets
+
+table(train$HeartDisease)
+table(test$HeartDisease)
+
+table(heartdata$HeartDisease)
+
+```
+The numbers of No in both train and test are ten time larger than Yes.
+2. Data Training 
+```{r}
+#Using GLM logistic model to predict 
+
+lgtrain<-glm(HeartDisease~., data=train, family = binomial(link = "logit"))
+summary(lgtrain)
+test.predicted<- as.factor(ifelse((predict(lgtrain, test))>=0.5, "Yes","No"))
+
+lg.orgmatrix<-confusionMatrix(test.predicted,test$HeartDisease, positive='Yes')
+
+lg.orgmatrix
+```
+
+
+```{r}
+##Modeling the original unbalanced data
+set.seed(145)
+grid<-expand.grid(mtry=2)
+
+ctrl <- trainControl(method = "cv", 
+                     number = 5, 
+                     verboseIter = TRUE,
+                     savePredictions = "final")
+model_rf <- caret::train(HeartDisease ~ .,
+                         data = train,
+                         method = "rf",
+                         ntree= 400,
+                         preProcess = c("scale", "center"),
+                         trControl = ctrl,
+                         tuneGrid=grid)
+
+```
+
+
+```{r}
+#Confusion Matrix
+final <- data.frame(actual = test$HeartDisease,
+                    predict(model_rf, newdata = test, type = "prob"))
+final$predict <-as.factor(ifelse(final$Yes > 0.5, "Yes", "No"))
+
+cm_original <- confusionMatrix(final$predict, test$HeartDisease, positive = 'Yes')
+cm_original
+cm_original$byClass
+
+```
+
+3. Dealing with imbalanced data
+```{r}
+##Modeling on the under-sampling data set
+ctrl <- trainControl(method = "cv", 
+                     number = 5, 
+                     verboseIter = TRUE,
+                     savePredictions = "final",
+                     sampling = 'down')
+
+set.seed(145)
+grid<-expand.grid(mtry=2)
+model_rf_under<- caret::train(HeartDisease ~ .,
+                         data = train,
+                         method = "rf",
+                         ntree= 400,
+                         preProcess = c("scale", "center"),
+                         trControl = ctrl,
+                         tuneGrid=grid)
+```
+```{r}
+#Confusion matrix
+final_under <- data.frame(actual = test$HeartDisease,
+                    predict(model_rf_under, newdata = test, type = "prob"))
+final_under$predict <- as.factor(ifelse(final_under$Yes > 0.5, "Yes", "No"))
+cm_under <- confusionMatrix(final_under$predict, test$HeartDisease, positive = 'Yes')
+cm_under
+cm_under$byClass
+```
+
+
+```{r}
+##Modeling on the over-sampling data set
+ctrl$sampling<-"up"
+
+set.seed(145)
+grid<-expand.grid(mtry=2)
+model_rf_over <- caret::train(HeartDisease ~ .,
+                         data = train,
+                         method = "rf",
+                         ntree= 400,
+                         preProcess = c("scale", "center"),
+                         trControl = ctrl,
+                         tuneGrid=grid)
+final_over <- data.frame(actual = test$HeartDisease,
+                    predict(model_rf_over, newdata = test, type = "prob"))
+#Confusion matrix
+final_over$predict <- as.factor(ifelse(final_over$Yes > 0.5, "Yes", "No"))
+cm_over <- confusionMatrix(final_over$predict, test$HeartDisease, positive = 'Yes')
+cm_over
+cm_over$byClass
+```
+
+```{r}
+##Weights
+ctrl <- trainControl(method = "cv", 
+                     number = 5, 
+                     verboseIter = TRUE,
+                     savePredictions = "final")
+
+model_weights <- ifelse(train$HeartDisease == "Yes",
+                        (1/table(train$HeartDisease)['Yes']) * 0.5,
+                        (1/table(train$HeartDisease)['No']) * 0.5)
+grid<-expand.grid(mtry=2)
+set.seed(145)
+weighted_fit <- train(HeartDisease ~ .,
+                      data = train,
+                      method = "rf",
+                      verbose = TRUE,
+                      weights = model_weights,
+                      tuneGrid=grid,
+                      trControl = ctrl)
+#Confusion matrix
+
+final_weighted_fit <- data.frame(actual = test$HeartDisease,
+                    predict(weighted_fit, newdata = test, type = "prob"))
+final_weighted_fit$predict <- as.factor(ifelse(final_weighted_fit$Yes > 0.5, "Yes", "No"))
+cm_weighted_fit <- confusionMatrix(final_weighted_fit$predict, test$HeartDisease, positive='Yes')
+cm_weighted_fit
+cm_weighted_fit$byClass
+```
+```{r}
+##Modeling on the smote data set
+ctrl <- trainControl(method = "cv", 
+                     number = 5, 
+                     verboseIter = TRUE,
+                     savePredictions = "final",
+                     sampling = "smote")
+
+set.seed(145)
+model_rf_smote<- caret::train(HeartDisease ~ .,
+                         data = train,
+                         method = "rf",
+                         ntree= 400,
+                         preProcess = c("scale", "center"),
+                         trControl = ctrl,
+                         tuneGrid=grid)
+#Confusion matrix
+final_smote <- data.frame(actual = test$HeartDisease,
+                    predict(model_rf_smote, newdata = test, type = "prob"))
+final_smote$predict <- as.factor(ifelse(final_smote$Yes > 0.5, "Yes", "No"))
+cm_smote <- confusionMatrix(final_smote$predict, test$HeartDisease, positive = 'Yes')
+cm_smote
+cm_smote$byClass
+
+as.data.frame(cm_smote)
+```
+
+
+4. compare the predictions of 5 models
+```{r}
+##Compare the metrics of 5 methods
+
+compare<-cbind(as.data.frame(cm_original$byClass), as.data.frame(cm_weighted_fit$byClass),as.data.frame(cm_over$byClass),as.data.frame(cm_under$byClass), as.data.frame(cm_smote$byClass))[c(1,2,5,6,7),]
+colnames(compare)<-c('original','weights','over','under', 'smote')
+compare
+accuracy<-cbind(as.data.frame(cm_original$overall), as.data.frame(cm_weighted_fit$overall),as.data.frame(cm_over$overall),as.data.frame(cm_under$overall), as.data.frame(cm_smote$overall))[c(1,2),]
+colnames(accuracy)<-c('original','weights','over','under', 'smote')
+compare_all<-rbind(compare, accuracy)
+```
+
+I decided to choose the under-sampling method, which yields relatively balanced results for the prediction. 
+```{r}
+##Tuning
+
+tuneGrid <- expand.grid(.mtry = c(1,5,17,30))
+ntrees <- c(300, 600)    
+nodesize <- c(2,20,40)
+
+
+ctrl <- trainControl(method = "cv", 
+                     number = 5, 
+                     verboseIter = TRUE,
+                     savePredictions = "final",
+                     classProbs = TRUE,
+                     summaryFunction = twoClassSummary,
+                     sampling = "down")
+set.seed(145)
+params <- expand.grid(ntrees = ntrees,
+                      nodesize = nodesize)
+store_maxnode <- vector("list", nrow(params))
+for(i in 1:nrow(params)){
+  nodesize <- params[i,2]
+  ntree <- params[i,1]
+  set.seed(145)
+  rf_modell <- train(HeartDisease~.,
+                    data = train,
+                    method = "rf",
+                    importance=TRUE,
+                    metric="ROC",
+                    tuneGrid = tuneGrid,
+                    trControl = ctrl,
+                    ntree = ntree,
+                    nodesize = nodesize)
+  store_maxnode[[i]] <- rf_model
+}
+
+
+print(rf_modell)
+
+```
+
+
+
+```{r}
+#Get the best model
+names(store_maxnode) <- paste("ntrees:", params$ntrees,
+                              "nodesize:", params$nodesize)
+summary(results_mtry)
+rf_modell$finalModel$param
+```
+
+
+```{r}
+# Fit the model with the best parameter: ntree=600, nodesize=40, mtry=17
+set.seed(145)
+ctrl <- trainControl(method = "cv", 
+                     number = 5, 
+                     verboseIter = TRUE,
+                     savePredictions = "final",
+                     classProbs = TRUE,
+                     summaryFunction = twoClassSummary,
+                     sampling = "down")
+grid<-expand.grid(mtry=17)
+final_model_rf <- caret::train(HeartDisease ~ .,
+                         data = train,
+                         method = "rf",
+                         ntree= 600,
+                         nodesize=40,
+                         metric="ROC",
+                         preProcess = c("scale", "center"),
+                         trControl = ctrl,
+                         tuneGrid=grid
+                         )
+
+final<- data.frame(actual = test$HeartDisease,
+                    predict(final_model_rf, newdata = test, type = "prob"))
+final$predict <- as.factor(ifelse(final$Yes > 0.5, "Yes", "No"))
+cm_final <- confusionMatrix(final$predict, test$HeartDisease, positive = 'Yes')
+cm_final$byClass
+cm_final
+```
+
+
+
+
+5. Feature Importance
+```{r}
+importance<-varImp(rf_modell)
+plot(importance)
+```
+
+## Decision Tree
+```{r}
+##Downsampling
+ctrl <- trainControl(method = "cv", 
+                     number = 5,
+                     classProbs = TRUE,
+                     sampling = "down")
+
+set.seed(145)
+dtree_model <- train(HeartDisease~.,
+                    train,
+                    method = "rpart",
+                    metric="ROC",
+                    tuneLength=10,
+                    trControl = ctrl)
+prp(dtree_model$finalModel, box.palette="Reds", tweak=2)
+dtree_model
+dtree <- data.frame(actual = test$HeartDisease,
+                    predict(dtree_model, newdata = test, type = "prob"))
+dtree$predict <- as.factor(ifelse(dtree$Yes > 0.5, "Yes", "No"))
+cm_dtree <- confusionMatrix(dtree$predict, test$HeartDisease, positive = 'Yes')
+cm_dtree
+cm_dtree$byClass
+
+
+
+```
+
+
+## XGBOOST
+```{r}
+##Convert data into numeric
+combi<-rbind(test,train)
+ohe_1 = dummyVars("~.",
+        data = combi%>% select(-"HeartDisease"), fullRank = T)
+
+ohe_df = data.table(predict(ohe_1,
+        combi%>% select(-"HeartDisease")))
+
+combi<-cbind(combi[,"HeartDisease"],ohe_df)
+
+
+#Splitting back to test and train
+train = data.table(combi)[1:nrow(train)]
+test = data.table(combi)[(nrow(train) + 1):nrow(combi)]
+
+
+
+```
+## Converting train and test into xgb.DMatrix format
+```{r}
+X_train = xgb.DMatrix(as.matrix(train[,-1]))
+y_train = train$HeartDisease
+X_test = xgb.DMatrix(as.matrix(test[,-1]))
+y_test = test$HeartDisease
+
+
+```
+
+```{r}
+
+# Model Building: XGBoost -Downsampling
+xgb_trcontrol = trainControl(
+  method = "cv",
+  number = 5,  
+  allowParallel = TRUE,
+  verboseIter = TRUE,
+  returnData = FALSE, 
+  sampling = "down", 
+)
+#tune Grid
+xgbGrid <- expand.grid(nrounds = c(100,400,800),  # this is n_estimators in the python code above
+                       max_depth = c(2,4,6),
+                       colsample_bytree = seq(0.5, 0.9, length.out = 5),
+                       ## The values below are default values in the sklearn-api. 
+                       eta = 0.1,
+                       gamma=0,
+                       min_child_weight = 1,
+                       subsample = 1
+                      )
+ 
+# Training XGBoost model 
+set.seed(145) 
+xgb_model1 = train(train[,-1],train$HeartDisease,  
+  trControl = xgb_trcontrol,
+  tuneGrid = xgbGrid,
+  metric="ROC",
+  method = "xgbTree",
+  objective = "reg:squarederror"
+)
+xgb_model1$finalModel
+
+
+xgb1 <- data.frame(actual = test$HeartDisease,
+                    predict(xgb_model1, newdata = test, type = "prob"))
+
+xgb1$predict <- as.factor(ifelse(xgb1$Yes > 0.5, "Yes", "No"))
+cm_xgb1 <- confusionMatrix(xgb1$predict, test$HeartDisease, positive = 'Yes')
+cm_xgb1
+cm_xgb1$byClass
+
+```
+
+
+```{r}
+### Compare the metrics of all machine learning model
+compare_model<-cbind(as.data.frame(cm_original$byClass), as.data.frame(cm_final$byClass),as.data.frame(cm_dtree$byClass),as.data.frame(cm_xgb1$byClass))[c(1,2,5,6,7),]
+colnames(compare_model)<-c('original','Random_forest','Decision_Tree','XGboost' )
+compare_model
+accuracy_model<-cbind(as.data.frame(cm_original$overall), as.data.frame(cm_final$overall),as.data.frame(cm_dtree$overall),as.data.frame(cm_xgb1$overall))[c(1,2),]
+colnames(accuracy_model)<-c('original','Random_forest','Decision_Tree','XGboost')
+compare_model<-rbind(compare_model, accuracy_model)
+compare_model
+
+```
+
+
