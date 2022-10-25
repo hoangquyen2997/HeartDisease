@@ -538,13 +538,6 @@ cm_final
 
 
 
-
-5. Feature Importance
-```{r}
-importance<-varImp(rf_modell)
-plot(importance)
-```
-
 ## Decision Tree
 ```{r}
 ##Downsampling
@@ -594,15 +587,7 @@ test = data.table(combi)[(nrow(train) + 1):nrow(combi)]
 
 
 ```
-## Converting train and test into xgb.DMatrix format
-```{r}
-X_train = xgb.DMatrix(as.matrix(train[,-1]))
-y_train = train$HeartDisease
-X_test = xgb.DMatrix(as.matrix(test[,-1]))
-y_test = test$HeartDisease
 
-
-```
 
 ```{r}
 
@@ -661,4 +646,8 @@ compare_model
 
 ```
 
-
+##Feature Importance
+```{r}
+importance<-varImp(rf_modell)
+plot(importance)
+```
